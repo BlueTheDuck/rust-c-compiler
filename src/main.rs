@@ -1,4 +1,25 @@
+/*
+
+void main() {}
+
+*/
+
+/*
+ - compiler!
+ - preprocessor
+ - memory map
+ - assembler?
+*/
+
+mod token;
+mod ast;
+mod compiler;
+
+use std::{fs::OpenOptions, io::Read};
+
 use clap::Parser;
+use nom_locate::LocatedSpan;
+
 #[derive(Parser)]
 struct Args {
     #[clap(short, long)]
@@ -40,6 +61,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         buf
     };
 
+    let (rest, tokens) = token::tokenize(LocatedSpan::new(&input)).unwrap();
+    println!("{:?}", tokens);
 
 
     Ok(())
