@@ -111,7 +111,7 @@ impl fmt::Display for FuncDef {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
-    Literal(i64),
+    Literal(u8),
     Ident(String),
 }
 impl Expr {

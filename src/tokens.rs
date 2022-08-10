@@ -99,7 +99,16 @@ fn parse_stmt(input: Pair<Rule>) -> Res<Stmt> {
 fn parse_expr(expr: Pair<Rule>) -> Res<Expr> {
     match expr.as_rule() {
         Rule::num => {
-            let num: i64 = expr.as_str().parse()?;
+            let num_str = expr.as_str();
+            let num;
+            if num_str.starts_with("0x") {
+                num = u8::from_str_radix(&num_str[2..], 16).unwrap();
+            } else if num_str.starts_with("0b") {
+                num = u8::from_str_radix(&num_str[2..], 2).unwrap();
+            } else {
+                num = u8::from_str_radix(num_str, 10).unwrap();
+            }
+
             Ok(Expr::Literal(num))
         }
         Rule::ident => Ok(Expr::Ident(expr.as_str().to_string())),
