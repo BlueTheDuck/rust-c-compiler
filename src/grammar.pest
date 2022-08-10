@@ -1,0 +1,43 @@
+// WHITESPACE - runs between rules and sub-rules
+// COMMENT - runs between rules and sub-rules
+// ANY - matches exactly one char
+// SOI - (start-of-input) matches only when a Parser is still at the starting position
+// EOI - (end-of-input) matches only when a Parser has reached its end
+// POP - pops a string from the stack and matches it
+// POP_ALL - pops the entire state of the stack and matches it
+// PEEK - peeks a string from the stack and matches it
+// PEEK[a..b] - peeks part of the stack and matches it
+// PEEK_ALL - peeks the entire state of the stack and matches it
+// DROP - drops the top of the stack (fails to match if the stack is empty)
+// ASCII_DIGIT - matches a numeric character from 0..9
+// ASCII_NONZERO_DIGIT - matches a numeric character from 1..9
+// ASCII_BIN_DIGIT - matches a numeric character from 0..1
+// ASCII_OCT_DIGIT - matches a numeric character from 0..7
+// ASCII_HEX_DIGIT - matches a numeric character from 0..9 or a..f or A..F
+// ASCII_ALPHA_LOWER - matches a character from a..z
+// ASCII_ALPHA_UPPER - matches a character from A..Z
+// ASCII_ALPHA - matches a character from a..z or A..Z
+// ASCII_ALPHANUMERIC - matches a character from a..z or A..Z or 0..9
+// ASCII - matches a character from \x00..\x7f
+// NEWLINE - matches either “\n” or “\r\n” or “\r”
+
+WHITESPACE = _{ (" " | "\t" | "\n" )+  }
+
+hex_num = _{ "0x" ~ ASCII_HEX_DIGIT+ }
+dec_num = _{ "-"? ~ ASCII_DIGIT+ }
+bin_num = _{ "0b" ~ ASCII_BIN_DIGIT+ }
+num = @{ hex_num | bin_num | dec_num }
+
+ident = @{ ("_" | ASCII_ALPHA) ~ ("_" | ASCII_ALPHANUMERIC)* }
+ty = @{ ident ~ "*"* }
+expr = { num | ident }
+
+var_decl = { ty ~ ident }
+
+stmt = { ret | assignment | func_def | (var_decl ~ ";") | var_def }
+    ret = { "return" ~ (expr)? ~ ";" }
+    assignment = { ident ~ "=" ~ expr ~ ";" }
+    func_def = { ty ~ ident ~ "(" ~ (var_decl ~ ("," ~ var_decl)*)? ~ ")" ~ "{" ~ (stmt)*  ~ "}" }
+    var_def = { ty ~ ident ~ "=" ~ expr ~ ";" }
+
+program = _{ ( func_def | (var_decl ~ ";") )* }

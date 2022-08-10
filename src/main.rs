@@ -11,14 +11,13 @@ void main() {}
  - assembler?
 */
 
-mod token;
-mod ast;
-mod compiler;
 
-use std::{fs::OpenOptions, io::Read};
-
+use std::{fs::OpenOptions, io::{Read, Write}};
 use clap::Parser;
-use nom_locate::LocatedSpan;
+
+mod tokens;
+mod ast;
+mod codegen;
 
 #[derive(Parser)]
 struct Args {
@@ -34,7 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let args = Args::parse();
         if args.output.is_none() {
             Args {
-                output: Some(args.input.replace(".rs", ".asm")),
+                output: Some(args.input.replace(".c", ".asm")),
                 ..args
             }
         } else {
@@ -47,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .write(false)
         .create(false)
         .open(args.input)?;
-    let output = OpenOptions::new()
+    let mut output = OpenOptions::new()
         .read(false)
         .write(true)
         .create(true)
@@ -61,9 +60,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         buf
     };
 
-    let (rest, tokens) = token::tokenize(LocatedSpan::new(&input)).unwrap();
-    println!("{:?}", tokens);
+    let program = tokens::parse(&input)?;
+    let ctx = codegen::analyze(program);
+    let code = codegen::compile(ctx);
 
+    output.write_all(code.as_bytes())?;
 
     Ok(())
 }
