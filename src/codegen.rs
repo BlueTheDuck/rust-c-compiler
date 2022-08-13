@@ -40,6 +40,14 @@ impl RegisterMap {
         };
         self.0.push((name.to_string(), idx));
     }
+
+    pub fn forget(&mut self, name: &str) {
+        debug_assert!(
+            self.get(name).is_some(),
+            "Attempted to forget variable {name} which does not exist"
+        );
+        self.0.retain(|(n, _)| n != name);
+    }
 }
 
 #[derive(Default)]
@@ -89,14 +97,22 @@ impl CompilationCtx {
         self.var_map.get(name).map(|&addr| addr)
     }
 
-    pub fn reserve_register(&mut self, name: &str, idx: Option<usize>) {
+    pub fn reserve_register(&mut self, name: &str, idx: Option<usize>) -> usize {
         assert!(!self.is_global());
         let regs = self.reg_maps.get_mut(&self.get_scope_path()).unwrap();
         regs.reserve(name, idx);
+        return regs.get(name).unwrap();
     }
     pub fn get_register(&self, name: &str) -> Option<usize> {
         assert!(!self.is_global());
         self.reg_maps.get(&self.get_scope_path()).unwrap().get(name)
+    }
+    pub fn forget_register(&mut self, name: &str) {
+        assert!(!self.is_global());
+        self.reg_maps
+            .get_mut(&self.get_scope_path())
+            .unwrap()
+            .forget(name);
     }
 
     pub fn var_is_global(&self, name: &str) -> bool {
