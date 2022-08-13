@@ -163,39 +163,62 @@ fn analyzer_scoped(program: Vec<Stmt>, ctx: &mut CompilationCtx) {
                 ctx.pop_scope();
             }
             Stmt::Assignment { lhs, rhs } => {
-                if let Some(reg_dst) = ctx.get_register(&lhs) {
-                    // local variable assignment
-                    match rhs {
-                        ast::Expr::Literal(num) => {
-                            let num: u8 = (num & 0xFF).try_into().expect("Numbers outside the 8bit range are not yet supported");
-                            ctx.push_asm_line(&format!("SET R{}, {:02X}", reg_dst, num));
-                        }
-                        ast::Expr::Ident(ident) => {
-                            if ctx.var_is_global(&ident) {
-                                let addr = ctx.get_var_addr(&ident).unwrap();
-                                ctx.push_asm_line(&format!("LOAD R{}, [{:X}]", reg_dst, addr));
-                            } else if ctx.var_is_local(&ident) {
-                                let reg_src = ctx.get_register(&ident).unwrap();
-                                ctx.push_asm_line(&format!("MOV R{}, R{}", reg_dst, reg_src));
-                            } else {
-                                panic!("Undefined identifier '{ident}'");
-                            }
+                let _acc = ctx.reserve_register("_acc", None);
+                let _tmp = ctx.reserve_register("_tmp", None);
+                let mut iter = rhs.stack.iter();
+                let first = iter.next().unwrap();
+                match first {
+                    StackExpr::Number(num) => {
+                        ctx.push_asm_line(&format!("SET R{}, {:X}", _acc, num));
+                    }
+                    StackExpr::Ident(ident) => {
+                        if ctx.var_is_global(ident) {
+                            let rhs_addr = ctx.get_var_addr(ident).unwrap();
+                            ctx.push_asm_line(&format!("LOAD R{}, [{:X}]", _acc, rhs_addr));
+                        } else if ctx.var_is_local(ident) {
+                            let rhs_reg = ctx.get_register(ident).unwrap();
+                            ctx.push_asm_line(&format!("MOV R{}, R{}", _acc, rhs_reg));
+                        } else {
+                            panic!("Undefined identifier {ident}");
                         }
                     }
-                } else if let Some(dst_addr) = ctx.get_var_addr(&lhs) {
-                    match rhs {
-                        ast::Expr::Literal(num) => {
-                            panic!("Cannot assign literal to global variable. The rhs for a global assign can only be a register");
+                    _ => unreachable!(),
+                }
+
+                for op in iter {
+                    match op {
+                        StackExpr::Number(num) => {
+                            ctx.push_asm_line(&format!("SET R{}, {:X}", _tmp, num));
                         }
-                        ast::Expr::Ident(ident) => {
-                            if let Some(src_reg) = ctx.get_register(&ident) {
-                                ctx.push_asm_line(&format!("STR [{:X}], R{}", dst_addr, src_reg));
-                            } else if let Some(src_addr) = ctx.get_var_addr(&ident) {
-                                panic!("Cannot do globa-to-global assignment. The rhs for a global assign can only be a register");
+                        StackExpr::Ident(ident) => {
+                            if ctx.var_is_global(ident) {
+                                let rhs_addr = ctx.get_var_addr(ident).unwrap();
+                                ctx.push_asm_line(&format!("LOAD R{}, [{:X}]", _tmp, rhs_addr));
+                            } else if ctx.var_is_local(ident) {
+                                let rhs_reg = ctx.get_register(ident).unwrap();
+                                ctx.push_asm_line(&format!("MOV R{}, R{}", _tmp, rhs_reg));
+                            } else {
+                                panic!("Undefined identifier {ident}");
                             }
                         }
+                        StackExpr::Add => {
+                            ctx.push_asm_line(&format!("ADD R{}, R{}", _acc, _tmp));
+                        },
+                        StackExpr::Sub => {
+                            ctx.push_asm_line(&format!("SUB R{}, R{}", _acc, _tmp));
+                        },
+                        StackExpr::Shl => todo!(),
+                        StackExpr::Shr => todo!(),
                     }
                 }
+                if let Some(reg_dst) = ctx.get_register(&lhs) {
+                    // local variable assignment
+                    ctx.push_asm_line(&format!("MOV R{}, R{}", reg_dst, _acc));
+                } else if let Some(dst_addr) = ctx.get_var_addr(&lhs) {
+                    ctx.push_asm_line(&format!("STR [{:X}], R{}", dst_addr, _acc));
+                }
+                ctx.forget_register("_acc");
+                ctx.forget_register("_tmp");
             }
         }
     }

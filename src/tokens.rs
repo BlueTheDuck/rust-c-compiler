@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use pest::{
     iterators::{Pair, Pairs},
     Parser,
@@ -5,6 +6,8 @@ use pest::{
 use pest_derive::Parser;
 
 use crate::ast::{Expr, FuncDef, Program, Stmt, VarDecl, VarDef};
+
+use self::expr::StackExpr;
 
 type Res<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -70,7 +73,7 @@ fn parse_stmt(input: Pair<Rule>) -> Res<Stmt> {
             let expr = parse_expr(input.next().unwrap())?;
             Ok(Stmt::Assignment {
                 lhs: ident.as_str().to_string(),
-                rhs: expr,
+                rhs: Expr::new(expr),
             })
         }
         Rule::stmt => parse_stmt(input.into_inner().next().unwrap()),
@@ -80,31 +83,105 @@ fn parse_stmt(input: Pair<Rule>) -> Res<Stmt> {
     }
 }
 
-fn parse_expr(expr: Pair<Rule>) -> Res<Expr> {
-    // assert_eq!(expr.as_rule(), Rule::expr);
-    match expr.as_rule() {
-        Rule::num => {
-            let num = parse_num(expr.as_str())?;
-            Ok(Expr::Literal(num))
+pub mod expr {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Eq, Clone)]
+    pub enum StackExpr {
+        Number(i64),
+        Ident(String),
+        Add,
+        Sub,
+        Shl,
+        Shr,
+    }
+    impl From<Pair<'_, Rule>> for StackExpr {
+        fn from(token: Pair<Rule>) -> Self {
+            match token.as_rule() {
+                Rule::num => StackExpr::Number(parse_num(token.as_str()).unwrap()),
+                Rule::ident => StackExpr::Ident(token.as_str().to_string()),
+                Rule::bin_op_1 | Rule::bin_op_2 => match token.as_str() {
+                    "+" => StackExpr::Add,
+                    "-" => StackExpr::Sub,
+                    "<<" => StackExpr::Shl,
+                    ">>" => StackExpr::Shr,
+                    _ => unreachable!(),
+                },
+                Rule::expr_2 => panic!("Don't pass expr_2 to this function"),
+                _ => unreachable!("Unexpected rule {:?}", token.as_rule()),
+            }
         }
-        Rule::ident => Ok(Expr::Ident(expr.as_str().to_string())),
-        Rule::expr => {
-            let expr = expr.into_inner().next().unwrap();
-            parse_expr(expr)
+    }
+    impl core::fmt::Display for StackExpr {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                StackExpr::Number(num) => write!(f, "{num}"),
+                StackExpr::Ident(ident) => write!(f, "{ident}"),
+                StackExpr::Add => write!(f, "+"),
+                StackExpr::Sub => write!(f, "-"),
+                StackExpr::Shl => write!(f, "<<"),
+                StackExpr::Shr => write!(f, ">>"),
+                #[allow(unreachable_patterns)]
+                _ => todo!("I forgor to impl {self:#?}"),
+            }
         }
-        _ => unreachable!("{:#?} is not an expr", expr.as_rule()),
+    }
+
+    fn parse_expr_2(tokens: Pair<Rule>, stack: &mut Vec<StackExpr>) {
+        assert_eq!(tokens.as_rule(), Rule::expr_2);
+        let mut tokens = tokens.into_inner();
+        let first = tokens.next().unwrap();
+        stack.push(first.into());
+        for token_pair in tokens.chunks(2).into_iter() {
+            let (op, val) = token_pair.collect_tuple().unwrap();
+            stack.push(val.into());
+            stack.push(op.into());
+        }
+    }
+    pub(super) fn parse_expr(tokens: Pair<Rule>) -> Vec<StackExpr> {
+        assert_eq!(
+            tokens.as_rule(),
+            Rule::expr,
+            "Called parse_expr with {:?}",
+            tokens.as_rule()
+        );
+
+        let mut stack = vec![];
+        let mut tokens = tokens.into_inner();
+
+        // We always have at least one expr_2
+        let first = tokens.next().unwrap();
+        parse_expr_2(first, &mut stack);
+
+        // The rest of the tokens are an OP followed by an expr_2.
+        // we can iterate over the tokens in pairs because we know that there are an even number of tokens.
+        // e. g.: 1 + 2 + 3 -> 1 [+ 2] +3 -> 1 + 2 [+ 3]
+        for token_pair in tokens.chunks(2).into_iter() {
+            let (op, val) = token_pair.collect_tuple().unwrap();
+            assert_eq!(val.as_rule(), Rule::expr_2);
+            parse_expr_2(val, &mut stack);
+            stack.push(op.into());
+        }
+
+        return stack;
+    }
+
+    pub fn parse_num(num_str: &str) -> Res<i64> {
+        let num;
+        if num_str.starts_with("0x") {
+            num = i64::from_str_radix(&num_str[2..], 16)?;
+        } else if num_str.starts_with("0b") {
+            num = i64::from_str_radix(&num_str[2..], 2)?;
+        } else {
+            num = i64::from_str_radix(num_str, 10)?;
+        }
+        return Ok(num);
     }
 }
-fn parse_num(num_str: &str) -> Res<i64> {
-    let num;
-    if num_str.starts_with("0x") {
-        num = i64::from_str_radix(&num_str[2..], 16)?;
-    } else if num_str.starts_with("0b") {
-        num = i64::from_str_radix(&num_str[2..], 2)?;
-    } else {
-        num = i64::from_str_radix(num_str, 10)?;
-    }
-    return Ok(num);
+
+fn parse_expr(tokens: Pair<Rule>) -> Res<Vec<StackExpr>> {
+    assert_eq!(tokens.as_rule(), Rule::expr);
+    Ok(expr::parse_expr(tokens))
 }
 
 fn parse_var_decl(input: Pair<Rule>) -> Res<VarDecl> {
@@ -124,15 +201,14 @@ fn parse_var_def(input: Pair<Rule>) -> Res<VarDef> {
     Ok(VarDef::new(
         &ty.as_str(),
         &ident.as_str(),
-        parse_expr(expr)?,
+        Expr::new(parse_expr(expr)?),
     ))
 }
 
 #[cfg(test)]
 mod tests {
-    use pest::Parser;
-
     use super::*;
+    use pest::Parser;
 
     #[test]
     fn test_func_def() {

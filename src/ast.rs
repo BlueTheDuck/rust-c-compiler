@@ -1,7 +1,6 @@
 use core::fmt;
 
-use crate::tokens::Rule;
-use pest::{iterators::Pair, Span};
+use crate::tokens::expr::StackExpr;
 
 pub type Program = Vec<Stmt>;
 
@@ -109,24 +108,19 @@ impl fmt::Display for FuncDef {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Expr {
-    Literal(i64),
-    Ident(String),
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Expr {
+    /* pub span: Span, <- TODO: Seems like a good idea */
+    pub stack: Vec<StackExpr>,
 }
 impl Expr {
-    pub fn new_lit(span: Span) -> Self {
-        todo!("{span:#?}")
-    }
-    pub fn new_ident(span: Span) -> Self {
-        todo!("{span:#?}")
+    pub fn new(stack: Vec<StackExpr>) -> Self {
+        Self { stack }
     }
 }
 impl fmt::Display for Expr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Literal(num) => write!(f, "{}", num),
-            Self::Ident(ident) => write!(f, "{}", ident),
-        }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "todo :)")
     }
 }

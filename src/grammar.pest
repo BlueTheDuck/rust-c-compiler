@@ -23,14 +23,19 @@
 
 WHITESPACE = _{ (" " | "\t" | "\n" )+  }
 
+bin_op_1 = { "+" | "-" }
+bin_op_2 = { "<<" | ">>" }
+
 hex_num = _{ "0x" ~ ASCII_HEX_DIGIT+ }
 dec_num = _{ "-"? ~ ASCII_DIGIT+ }
 bin_num = _{ "0b" ~ ASCII_BIN_DIGIT+ }
 num = @{ hex_num | bin_num | dec_num }
 
 ident = @{ ("_" | ASCII_ALPHA) ~ ("_" | ASCII_ALPHANUMERIC)* }
+expr_2 = { (num | ident) ~ (bin_op_2 ~ (num | ident))* }
+expr = { expr_2 ~ (bin_op_1 ~ expr_2)* }
+
 ty = @{ ident ~ "*"* }
-expr = { num | ident }
 
 var_decl = { ty ~ ident }
 
