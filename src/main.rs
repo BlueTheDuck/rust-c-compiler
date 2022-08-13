@@ -9,6 +9,8 @@
 use std::{fs::OpenOptions, io::{Read, Write}};
 use clap::Parser;
 
+type Res<T> = Result<T, Box<dyn std::error::Error>>;
+
 mod tokens;
 mod ast;
 mod codegen;

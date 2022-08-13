@@ -1,9 +1,8 @@
 use crate::{
     ast::{Expr, Stmt, VarDef},
+    codegen::context::{CompilationCtx, Register},
     tokens::expr::StackExpr,
 };
-
-use super::context::{CompilationCtx, Register};
 
 pub fn analyze(program: Vec<Stmt>) -> CompilationCtx {
     let mut ctx = CompilationCtx::default();
@@ -41,22 +40,22 @@ fn analyzer_scoped(program: Vec<Stmt>, ctx: &mut CompilationCtx) {
                 }
             }
             Stmt::Assignment { lhs, rhs } => {
-                ctx.push_asm_line(&format!("{} = {}", lhs, rhs));
                 // The assignment may use a variable both as a lhs and rhs
                 // e.g.: x = x + 1
                 // in that case we need to copy the value of x to a temporary register
-                // but otherwise we can just use the register of x as the lhs
+                // otherwise we can just use the register of x as accumulator
                 let self_assign = !rhs.list_idents().contains(&&lhs);
                 if self_assign {
                     // If we are assigning to a variable that is also used as a rhs
                     // we let `compile_expression` reserve a temporary register for us
                     compile_expression(lhs, rhs, ctx, None);
                 } else {
+                    // If we are NOT assigning to a variable that is also used as a rhs
+                    // we can use it as the accumulator
                     let reg = ctx.get_register(&lhs);
                     compile_expression(lhs, rhs, ctx, reg);
                 }
-                
-            },
+            }
             Stmt::LabelDef(ident) => {
                 ctx.push_asm_line(&format!("{}:", ident));
             }
@@ -64,7 +63,7 @@ fn analyzer_scoped(program: Vec<Stmt>, ctx: &mut CompilationCtx) {
                 ctx.push_asm_line(&format!("JMP {}", ident));
             }
             #[allow(unreachable_patterns)]
-            _ => todo!("Stmt {stmt:#?}")
+            _ => todo!("Stmt {stmt:#?}"),
         }
     }
 }

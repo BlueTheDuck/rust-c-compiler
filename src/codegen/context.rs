@@ -79,8 +79,6 @@ impl RegisterMap {
     }
 
     pub fn get(&self, name: &str) -> Option<Register> {
-        // self.0.iter().find(|(n, _)| n == name).map(|(_, r)| *r)
-        // debug_assert!(self.0.iter().find(|n|n.map(|n| n == name).unwrap_or(false)).is_some(), "Register {name} not found");
         self.0
             .iter()
             .enumerate()
