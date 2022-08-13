@@ -151,7 +151,8 @@ fn analyzer_scoped(program: Vec<Stmt>, ctx: &mut CompilationCtx) {
                     // local variable assignment
                     match rhs {
                         ast::Expr::Literal(num) => {
-                            ctx.push_asm_line(&format!("SET R{}, {:X}", reg_dst, num));
+                            let num: u8 = (num & 0xFF).try_into().expect("Numbers outside the 8bit range are not yet supported");
+                            ctx.push_asm_line(&format!("SET R{}, {:02X}", reg_dst, num));
                         }
                         ast::Expr::Ident(ident) => {
                             if ctx.var_is_global(&ident) {

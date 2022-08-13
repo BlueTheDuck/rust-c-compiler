@@ -8,29 +8,13 @@ use crate::ast::{Expr, FuncDef, Program, Stmt, VarDecl, VarDef};
 
 type Res<T> = Result<T, Box<dyn std::error::Error>>;
 
-#[derive(Debug)]
-pub struct NumParseError {
-    text: String,
-    line: usize,
-}
-impl core::fmt::Display for NumParseError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "Error parsing number from '{}' at {}",
-            self.text, self.line
-        )
-    }
-}
-impl std::error::Error for NumParseError {}
-
 #[derive(Parser, Debug)]
 #[grammar = "grammar.pest"]
 pub struct CParser;
 
 #[allow(dead_code)]
 pub fn parse(input: &str) -> Res<Program> {
-    let parsed = CParser::parse(Rule::program, input)?;
+    let parsed: Pairs<Rule> = CParser::parse(Rule::program, input)?;
     let mut ast: Program = Default::default();
     for pair in parsed {
         if let Rule::var_decl = pair.as_rule() {
@@ -97,18 +81,10 @@ fn parse_stmt(input: Pair<Rule>) -> Res<Stmt> {
 }
 
 fn parse_expr(expr: Pair<Rule>) -> Res<Expr> {
+    // assert_eq!(expr.as_rule(), Rule::expr);
     match expr.as_rule() {
         Rule::num => {
-            let num_str = expr.as_str();
-            let num;
-            if num_str.starts_with("0x") {
-                num = u8::from_str_radix(&num_str[2..], 16).unwrap();
-            } else if num_str.starts_with("0b") {
-                num = u8::from_str_radix(&num_str[2..], 2).unwrap();
-            } else {
-                num = u8::from_str_radix(num_str, 10).unwrap();
-            }
-
+            let num = parse_num(expr.as_str())?;
             Ok(Expr::Literal(num))
         }
         Rule::ident => Ok(Expr::Ident(expr.as_str().to_string())),
@@ -118,6 +94,17 @@ fn parse_expr(expr: Pair<Rule>) -> Res<Expr> {
         }
         _ => unreachable!("{:#?} is not an expr", expr.as_rule()),
     }
+}
+fn parse_num(num_str: &str) -> Res<i64> {
+    let num;
+    if num_str.starts_with("0x") {
+        num = i64::from_str_radix(&num_str[2..], 16)?;
+    } else if num_str.starts_with("0b") {
+        num = i64::from_str_radix(&num_str[2..], 2)?;
+    } else {
+        num = i64::from_str_radix(num_str, 10)?;
+    }
+    return Ok(num);
 }
 
 fn parse_var_decl(input: Pair<Rule>) -> Res<VarDecl> {
@@ -134,7 +121,11 @@ fn parse_var_def(input: Pair<Rule>) -> Res<VarDef> {
     let ty = tokens.next().unwrap();
     let ident = tokens.next().unwrap();
     let expr = tokens.next().unwrap();
-    Ok(VarDef::new(&ty.as_str(), &ident.as_str(), parse_expr(expr)?))
+    Ok(VarDef::new(
+        &ty.as_str(),
+        &ident.as_str(),
+        parse_expr(expr)?,
+    ))
 }
 
 #[cfg(test)]
