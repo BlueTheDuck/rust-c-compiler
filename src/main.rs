@@ -1,10 +1,4 @@
 /*
-
-void main() {}
-
-*/
-
-/*
  - compiler!
  - preprocessor
  - memory map
@@ -49,6 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut output = OpenOptions::new()
         .read(false)
         .write(true)
+        .truncate(true)
         .create(true)
         .open(args.output.unwrap())?;
 

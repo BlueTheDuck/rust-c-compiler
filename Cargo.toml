@@ -9,3 +9,4 @@ edition = "2021"
 clap = { version = "3.2.16", features = ["derive"] }
 pest = "2.1"
 pest_derive = "2.1"
+itertools = "*"

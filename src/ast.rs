@@ -1,5 +1,7 @@
 use core::fmt;
 
+use itertools::Itertools;
+
 use crate::tokens::expr::StackExpr;
 
 pub type Program = Vec<Stmt>;
@@ -62,9 +64,9 @@ impl fmt::Display for VarDecl {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct VarDef {
-    ty: String,
-    ident: String,
-    expr: Expr,
+    pub ty: String,
+    pub ident: String,
+    pub expr: Expr,
 }
 impl VarDef {
     pub fn new<S>(ty: &S, ident: &S, expr: Expr) -> Self
@@ -134,6 +136,6 @@ impl Expr {
 }
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "todo :)")
+        write!(f, "{}", self.stack.iter().join(" "))
     }
 }
