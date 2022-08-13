@@ -118,6 +118,19 @@ impl Expr {
     pub fn new(stack: Vec<StackExpr>) -> Self {
         Self { stack }
     }
+    
+    /**
+     * List the identifiers used in this expression.
+     */
+    pub fn list_idents(&self) -> Vec<&String> {
+        self.stack
+            .iter()
+            .filter_map(|expr| match expr {
+                StackExpr::Ident(ident) => Some(ident),
+                _ => None,
+            })
+            .collect()
+    }
 }
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
