@@ -57,6 +57,8 @@ pub fn parse(input: &str) -> Res<Program> {
                 body: stmts,
             });
             ast.push(func);
+        } else if let Rule::EOI = pair.as_rule() {
+            break;
         } else {
             panic!("Unexpected rule {:#?}", pair);
         }

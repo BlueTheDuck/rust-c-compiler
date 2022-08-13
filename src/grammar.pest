@@ -45,4 +45,4 @@ stmt = { ret | assignment | func_def | (var_decl ~ ";") | var_def }
     func_def = { ty ~ ident ~ "(" ~ (var_decl ~ ("," ~ var_decl)*)? ~ ")" ~ "{" ~ (stmt)*  ~ "}" }
     var_def = { ty ~ ident ~ "=" ~ expr ~ ";" }
 
-program = _{ ( func_def | (var_decl ~ ";") )* }
+program = _{ SOI ~ ( func_def | (var_decl ~ ";") )* ~ EOI }
