@@ -81,7 +81,9 @@ fn parse_stmt(input: Pair<Rule>) -> Res<Stmt> {
         Rule::stmt => parse_stmt(input.into_inner().next().unwrap()),
         Rule::var_decl => Ok(parse_var_decl(input)?.into()),
         Rule::var_def => Ok(parse_var_def(input)?.into()),
-        _ => unreachable!(),
+        Rule::label_def => Ok(Stmt::LabelDef(parse_label_def(input)?)),
+        Rule::goto_label => Ok(Stmt::Goto(parse_goto_label(input)?)),
+        _ => unreachable!("Unexpected rule: {:?}", input.as_rule()),
     }
 }
 
@@ -205,6 +207,22 @@ fn parse_var_def(input: Pair<Rule>) -> Res<VarDef> {
         &ident.as_str(),
         Expr::new(parse_expr(expr)?),
     ))
+}
+
+fn parse_label_def(tokens: Pair<Rule>) -> Res<String> {
+    debug_assert_eq!(tokens.as_rule(), Rule::label_def);
+    let mut tokens = tokens.into_inner();
+    let ident = tokens.next().unwrap(); // label
+    debug_assert_eq!(ident.as_rule(), Rule::ident);
+    Ok(ident.as_str().to_string())
+}
+
+fn parse_goto_label(tokens: Pair<Rule>) -> Res<String> {
+    debug_assert_eq!(tokens.as_rule(), Rule::goto_label);
+    let mut tokens = tokens.into_inner();
+    let ident = tokens.next().unwrap(); // label
+    debug_assert_eq!(ident.as_rule(), Rule::ident);
+    Ok(ident.as_str().to_string())
 }
 
 #[cfg(test)]

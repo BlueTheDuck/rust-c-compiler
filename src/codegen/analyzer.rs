@@ -56,7 +56,15 @@ fn analyzer_scoped(program: Vec<Stmt>, ctx: &mut CompilationCtx) {
                     compile_expression(lhs, rhs, ctx, reg);
                 }
                 
+            },
+            Stmt::LabelDef(ident) => {
+                ctx.push_asm_line(&format!("{}:", ident));
             }
+            Stmt::Goto(ident) => {
+                ctx.push_asm_line(&format!("JMP {}", ident));
+            }
+            #[allow(unreachable_patterns)]
+            _ => todo!("Stmt {stmt:#?}")
         }
     }
 }

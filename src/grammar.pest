@@ -39,7 +39,9 @@ ty = @{ ident ~ "*"* }
 
 var_decl = { ty ~ ident }
 
-stmt = { ret | assignment | func_def | (var_decl ~ ";") | var_def }
+stmt = { label_def | goto_label | ret | assignment | func_def | (var_decl ~ ";") | var_def  }
+    label_def = { ident ~ ":" }
+    goto_label = { "goto" ~ ident ~ ";" }
     ret = { "return" ~ (expr)? ~ ";" }
     assignment = { ident ~ "=" ~ expr ~ ";" }
     func_def = { ty ~ ident ~ "(" ~ (var_decl ~ ("," ~ var_decl)*)? ~ ")" ~ "{" ~ (stmt)*  ~ "}" }

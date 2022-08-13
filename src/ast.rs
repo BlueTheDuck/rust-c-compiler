@@ -12,6 +12,8 @@ pub enum Stmt {
     VarDef(VarDef),
     FuncDef(FuncDef),
     Assignment { lhs: String, rhs: Expr },
+    Goto(String),
+    LabelDef(String)
 }
 impl From<VarDecl> for Stmt {
     fn from(var: VarDecl) -> Self {
@@ -36,6 +38,14 @@ impl fmt::Display for Stmt {
             ),
             Self::FuncDef(func) => write!(f, "{func}"),
             Self::Assignment { lhs, rhs } => write!(f, "{lhs} = {rhs};", lhs = lhs, rhs = rhs),
+            Self::Goto(ident) => {
+                write!(f, "goto {ident};", ident = ident)
+            }
+            Self::LabelDef(ident) => {
+                write!(f, "{ident}:", ident = ident)
+            }
+            #[allow(unreachable_patterns)]
+            _ => todo!("{:?}", self),
         }
     }
 }
