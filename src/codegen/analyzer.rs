@@ -1,6 +1,9 @@
 use crate::{
     ast::{Expr, Stmt, VarDef},
-    codegen::context::{CompilationCtx, Register},
+    codegen::{
+        context::{CompilationCtx, Register},
+        opcodes::*,
+    },
     tokens::expr::StackExpr,
 };
 
@@ -27,6 +30,7 @@ fn analyzer_scoped(program: Vec<Stmt>, ctx: &mut CompilationCtx) {
                     "Global variables can't have initial values (yet)"
                 );
                 let reg = ctx.reserve_register(&ident, None);
+                ctx.push_asm_line(&format!("; {} = {}", ident, expr));
                 compile_expression(ident, expr, ctx, Some(reg));
             }
             Stmt::VarDecl(var) => {
@@ -34,8 +38,10 @@ fn analyzer_scoped(program: Vec<Stmt>, ctx: &mut CompilationCtx) {
                 // for global variables we assigna a memory location
                 // for local variables we assign a register
                 if ctx.is_global() {
+                    ctx.push_asm_line(&format!("; {}", var.ident));
                     ctx.reserve_global_var(&var.ident);
                 } else {
+                    ctx.push_asm_line(&format!("; {}", var.ident));
                     ctx.reserve_register(&var.ident, None);
                 }
             }
@@ -46,10 +52,12 @@ fn analyzer_scoped(program: Vec<Stmt>, ctx: &mut CompilationCtx) {
                 // otherwise we can just use the register of x as accumulator
                 let self_assign = !rhs.list_idents().contains(&&lhs);
                 if self_assign {
+                    ctx.push_asm_line(&format!("; [self] {} = {}", lhs, rhs));
                     // If we are assigning to a variable that is also used as a rhs
                     // we let `compile_expression` reserve a temporary register for us
                     compile_expression(lhs, rhs, ctx, None);
                 } else {
+                    ctx.push_asm_line(&format!("; {} = {}", lhs, rhs));
                     // If we are NOT assigning to a variable that is also used as a rhs
                     // we can use it as the accumulator
                     let reg = ctx.get_register(&lhs);
@@ -78,14 +86,18 @@ fn compile_expression(lhs: String, rhs: Expr, ctx: &mut CompilationCtx, acc_reg:
             ctx.push_asm_line(&format!("SET {}, {:X}", _acc, num));
         }
         StackExpr::Ident(ident) => {
-            if ctx.var_is_global(ident) {
-                let rhs_addr = ctx.get_var_addr(ident).unwrap();
-                ctx.push_asm_line(&format!("LOAD {}, [{}]", _acc, rhs_addr));
-            } else if ctx.var_is_local(ident) {
-                let rhs_reg = ctx.get_register(ident).unwrap();
-                ctx.push_asm_line(&format!("MOV {}, {}", _acc, rhs_reg));
-            } else {
-                panic!("Undefined identifier {ident}");
+            let rhs: Operand = match (ctx.get_register(ident), ctx.get_var_addr(ident)) {
+                (Some(reg), None) => reg.into(),
+                (None, Some(addr)) => addr.into(),
+                (None, None) => {
+                    panic!("Variable {ident} is not defined");
+                }
+                (Some(_), Some(_)) => {
+                    unreachable!("Variable {ident} is defined both as a register and as an address")
+                }
+            };
+            if let Some(opcode) = Op::emit_set(_acc.into(), rhs).unwrap() {
+                ctx.push_asm_line(&format!("{}", opcode));
             }
         }
         _ => unreachable!(),
@@ -97,14 +109,18 @@ fn compile_expression(lhs: String, rhs: Expr, ctx: &mut CompilationCtx, acc_reg:
                 ctx.push_asm_line(&format!("SET {}, {:X}", _tmp, num));
             }
             StackExpr::Ident(ident) => {
-                if ctx.var_is_global(ident) {
-                    let rhs_addr = ctx.get_var_addr(ident).unwrap();
-                    ctx.push_asm_line(&format!("LOAD {}, [{}]", _tmp, rhs_addr));
-                } else if ctx.var_is_local(ident) {
-                    let rhs_reg = ctx.get_register(ident).unwrap();
-                    ctx.push_asm_line(&format!("MOV {}, {}", _tmp, rhs_reg));
-                } else {
-                    panic!("Undefined identifier {ident}");
+                let rhs: Operand = match (ctx.get_register(ident), ctx.get_var_addr(ident)) {
+                    (Some(reg), None) => reg.into(),
+                    (None, Some(addr)) => addr.into(),
+                    (None, None) => {
+                        panic!("Variable {ident} is not defined");
+                    }
+                    (Some(_), Some(_)) => unreachable!(
+                        "Variable {ident} is defined both as a register and as an address"
+                    ),
+                };
+                if let Some(opcode) = Op::emit_set(_acc.into(), rhs).unwrap() {
+                    ctx.push_asm_line(&format!("{}", opcode));
                 }
             }
             StackExpr::Add => {
