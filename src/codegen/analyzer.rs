@@ -7,13 +7,13 @@ use crate::{
     tokens::expr::StackExpr,
 };
 
-pub fn analyze(program: Vec<Stmt>) -> CompilationCtx {
+pub fn analyze(program: Vec<Stmt>, verbose: bool) -> CompilationCtx {
     let mut ctx = CompilationCtx::default();
-    analyzer_scoped(program, &mut ctx);
+    analyzer_scoped(program, &mut ctx, verbose);
     ctx
 }
 
-fn analyzer_scoped(program: Vec<Stmt>, ctx: &mut CompilationCtx) {
+fn analyzer_scoped(program: Vec<Stmt>, ctx: &mut CompilationCtx, verbose: bool) {
     for stmt in program {
         match stmt {
             Stmt::FuncDef(func) => {
@@ -21,7 +21,7 @@ fn analyzer_scoped(program: Vec<Stmt>, ctx: &mut CompilationCtx) {
                 for arg in func.args {
                     ctx.reserve_register(&arg.ident, None);
                 }
-                analyzer_scoped(func.body, ctx);
+                analyzer_scoped(func.body, ctx, verbose);
                 ctx.pop_scope();
             }
             Stmt::VarDef(VarDef { ty, ident, expr }) => {
@@ -30,7 +30,9 @@ fn analyzer_scoped(program: Vec<Stmt>, ctx: &mut CompilationCtx) {
                     "Global variables can't have initial values (yet)"
                 );
                 let reg = ctx.reserve_register(&ident, None);
-                ctx.push_asm_line(&format!("; {} = {}", ident, expr));
+                if verbose {
+                    ctx.push_asm_line(&format!("; {ident} is {reg}"));
+                }
                 compile_expression(ident, expr, ctx, Some(reg));
             }
             Stmt::VarDecl(var) => {
@@ -38,11 +40,15 @@ fn analyzer_scoped(program: Vec<Stmt>, ctx: &mut CompilationCtx) {
                 // for global variables we assigna a memory location
                 // for local variables we assign a register
                 if ctx.is_global() {
-                    ctx.push_asm_line(&format!("; {}", var.ident));
-                    ctx.reserve_global_var(&var.ident);
+                    let addr = ctx.reserve_global_var(&var.ident);
+                    if verbose {
+                        ctx.push_asm_line(&format!("; {ident} is at {addr}", ident = var.ident));
+                    }
                 } else {
-                    ctx.push_asm_line(&format!("; {}", var.ident));
-                    ctx.reserve_register(&var.ident, None);
+                    let reg = ctx.reserve_register(&var.ident, None);
+                    if verbose {
+                        ctx.push_asm_line(&format!("; {ident} is {reg}", ident = var.ident));
+                    }
                 }
             }
             Stmt::Assignment { lhs, rhs } => {
@@ -65,6 +71,7 @@ fn analyzer_scoped(program: Vec<Stmt>, ctx: &mut CompilationCtx) {
                 }
             }
             Stmt::LabelDef(ident) => {
+                debug_assert!(!ident.is_empty());
                 ctx.push_asm_line(&format!("{}:", ident));
             }
             Stmt::Goto(ident) => {

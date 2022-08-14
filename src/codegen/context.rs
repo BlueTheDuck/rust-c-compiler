@@ -150,7 +150,7 @@ impl CompilationCtx {
         self.scope_stack.join("::")
     }
 
-    pub fn reserve_global_var(&mut self, name: &str) {
+    pub fn reserve_global_var(&mut self, name: &str) -> Address {
         assert!(
             self.var_map.get(name).is_none(),
             "Variable '{}' already exists",
@@ -164,6 +164,7 @@ impl CompilationCtx {
             .map(|addr| addr + 1)
             .unwrap_or(GLOBAL_VARIABLE_START);
         self.var_map.insert(name.to_string(), empty_addr);
+        return empty_addr;
     }
     pub fn get_var_addr(&self, name: &str) -> Option<Address> {
         self.var_map.get(name).map(|&addr| addr)

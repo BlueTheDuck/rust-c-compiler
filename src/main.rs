@@ -22,6 +22,9 @@ struct Args {
 
     #[clap(short, long)]
     output: Option<String>,
+
+    #[clap(long)]
+    verbose_asm: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -58,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let program = tokens::parse(&input)?;
-    let ctx = codegen::analyze(program);
+    let ctx = codegen::analyze(program, args.verbose_asm);
     let code = codegen::compile(ctx);
 
     output.write_all(code.as_bytes())?;
