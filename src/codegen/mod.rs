@@ -2,6 +2,7 @@ use self::context::CompilationCtx;
 
 mod context;
 mod analyzer;
+mod opcodes;
 
 pub use analyzer::analyze;
 pub fn compile(ctx: CompilationCtx) -> String {

@@ -7,7 +7,7 @@ type Scope = Vec<String>;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Default)]
 #[repr(transparent)]
-pub struct Register(u8);
+pub struct Register(pub u8);
 impl std::ops::Deref for Register {
     type Target = u8;
 
@@ -48,7 +48,7 @@ impl PartialEq<usize> for Register {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Default, PartialOrd, Ord)]
-pub struct Address(u8);
+pub struct Address(pub u8);
 impl std::ops::Deref for Address {
     type Target = u8;
 
