@@ -106,7 +106,7 @@ impl RegisterMap {
                 .enumerate()
                 .find(|(_, name)| name.is_none())
                 .map(|(idx, _)| Register::from(idx))
-                .unwrap_or_default()
+                .expect("Tried to reserve too many registers")
                 .into(),
         };
         self.0[idx] = Some(name.to_string());
@@ -264,5 +264,20 @@ mod tests {
         let mut ctx = CompilationCtx::new();
         ctx.reserve_register("a", None);
         ctx.reserve_register("a", None);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_ctx_reserve_too_many_locals() {
+        let mut ctx = CompilationCtx::new();
+        ctx.push_scope("main");
+        for i in 0..=7 {
+            ctx.reserve_register(&format!("reg-{i}"), None);
+        }
+        for i in 0..=7 {
+            let reg = ctx.get_register(&format!("reg-{i}"));
+            assert_eq!(reg, Some(Register(i)));
+        }
+        ctx.reserve_register("one-too-many", None);
     }
 }
