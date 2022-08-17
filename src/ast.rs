@@ -13,7 +13,11 @@ pub enum Stmt {
     FuncDef(FuncDef),
     Assignment { lhs: String, rhs: Expr },
     Goto(String),
-    LabelDef(String)
+    LabelDef(String),
+    IfNotZero {
+        ident: String,
+        body: Vec<Stmt>
+    }
 }
 impl From<VarDecl> for Stmt {
     fn from(var: VarDecl) -> Self {

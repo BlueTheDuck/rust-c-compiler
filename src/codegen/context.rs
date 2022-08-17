@@ -57,7 +57,9 @@ impl std::ops::Deref for Address {
     }
 }
 impl<I> ops::Add<I> for Address
-where I: Into<u8> {
+where
+    I: Into<u8>,
+{
     type Output = Self;
 
     fn add(self, rhs: I) -> Self::Output {
@@ -128,6 +130,7 @@ pub struct CompilationCtx {
     var_map: HashMap<String, Address>,
     reg_maps: HashMap<String, RegisterMap>,
     code_blocks: HashMap<String, String>,
+    local_label_counter: HashMap<String, usize>
 }
 impl CompilationCtx {
     pub fn new() -> Self {
@@ -135,9 +138,14 @@ impl CompilationCtx {
     }
     pub fn push_scope(&mut self, name: &str) {
         self.scope_stack.push(name.to_string());
-        if self.reg_maps.get(&self.get_scope_path()).is_none() {
+        let scope = self.get_scope_path();
+        if self.reg_maps.get(&scope).is_none() {
             self.reg_maps
-                .insert(self.get_scope_path(), RegisterMap::new());
+                .insert(scope.clone(), RegisterMap::new());
+        }
+        if self.local_label_counter.get(&scope).is_none() {
+            self.local_label_counter
+                .insert(scope.clone(), 0);
         }
     }
     pub fn pop_scope(&mut self) -> Option<String> {
@@ -148,6 +156,12 @@ impl CompilationCtx {
     }
     pub fn get_scope_path(&self) -> String {
         self.scope_stack.join("::")
+    }
+    pub fn gen_local_label(&mut self, name: &str) -> String {
+        let path = self.scope_stack.join(".");
+        let counter = *self.local_label_counter.get(&self.get_scope_path()).unwrap();
+        self.local_label_counter.insert(self.get_scope_path(), counter + 1);
+        format!(".{path}.{name}.L{counter}")
     }
 
     pub fn reserve_global_var(&mut self, name: &str) -> Address {
@@ -279,5 +293,20 @@ mod tests {
             assert_eq!(reg, Some(Register(i)));
         }
         ctx.reserve_register("one-too-many", None);
+    }
+
+    #[test]
+    fn test_ctx_local_labels() {
+        let mut ctx = CompilationCtx::new();
+        ctx.push_scope("main");
+        let label = ctx.gen_local_label("a");
+        assert_eq!(label, ".main.a.L0");
+        let label = ctx.gen_local_label("a");
+        assert_eq!(label, ".main.a.L1");
+        ctx.push_scope("sub");
+        let label = ctx.gen_local_label("a");
+        assert_eq!(label, ".main.sub.a.L0");
+        let label = ctx.gen_local_label("a");
+        assert_eq!(label, ".main.sub.a.L1");
     }
 }

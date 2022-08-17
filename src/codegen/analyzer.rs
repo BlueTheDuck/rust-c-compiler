@@ -77,6 +77,21 @@ fn analyzer_scoped(program: Vec<Stmt>, ctx: &mut CompilationCtx, verbose: bool) 
             Stmt::Goto(ident) => {
                 ctx.push_asm_line(&format!("JMP {}", ident));
             }
+            Stmt::IfNotZero { ident, body } => {
+                ctx.push_asm_line(&format!("; if {} != 0", ident));
+                let reg = match ctx.get_register(&ident) {
+                    Some(reg) => reg,
+                    None => todo!("Comparison with static variables not implemented"),
+                };
+                let _tmp = ctx.reserve_register("tmp", None);
+                ctx.push_asm_line(&format!("SET {}, 0", _tmp));
+                ctx.push_asm_line(&format!("CMP {}, {}", reg, _tmp));
+                ctx.forget_register("tmp");
+                let label = ctx.gen_local_label("jz_skip");
+                ctx.push_asm_line(&format!("JZ {label}"));
+                analyzer_scoped(body, ctx, verbose);                
+                ctx.push_asm_line(&format!("{label}:"));
+            }
             #[allow(unreachable_patterns)]
             _ => todo!("Stmt {stmt:#?}"),
         }

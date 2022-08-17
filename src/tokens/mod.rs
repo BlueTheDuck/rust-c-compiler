@@ -1,9 +1,13 @@
+use crate::{
+    ast::{Expr, FuncDef, Program, Stmt, VarDecl, VarDef},
+    Res,
+};
+use itertools::Itertools;
 use pest::{
     iterators::{Pair, Pairs},
     Parser,
 };
 use pest_derive::Parser;
-use crate::{ast::{Expr, FuncDef, Program, Stmt, VarDecl, VarDef}, Res};
 
 pub mod expr;
 
@@ -62,11 +66,11 @@ pub fn parse(input: &str) -> Res<Program> {
     Ok(ast)
 }
 
-fn parse_stmt(input: Pair<Rule>) -> Res<Stmt> {
-    match input.as_rule() {
+fn parse_stmt(tokens: Pair<Rule>) -> Res<Stmt> {
+    match tokens.as_rule() {
         Rule::ret => todo!(),
         Rule::assignment => {
-            let mut input = input.into_inner();
+            let mut input = tokens.into_inner();
             let ident = input.next().unwrap();
             let expr = parse_expr(input.next().unwrap())?;
             Ok(Stmt::Assignment {
@@ -74,12 +78,13 @@ fn parse_stmt(input: Pair<Rule>) -> Res<Stmt> {
                 rhs: Expr::new(expr),
             })
         }
-        Rule::stmt => parse_stmt(input.into_inner().next().unwrap()),
-        Rule::var_decl => Ok(parse_var_decl(input)?.into()),
-        Rule::var_def => Ok(parse_var_def(input)?.into()),
-        Rule::label_def => Ok(Stmt::LabelDef(parse_label_def(input)?)),
-        Rule::goto_label => Ok(Stmt::Goto(parse_goto_label(input)?)),
-        _ => unreachable!("Unexpected rule: {:?}", input.as_rule()),
+        Rule::stmt => parse_stmt(tokens.into_inner().next().unwrap()),
+        Rule::var_decl => Ok(parse_var_decl(tokens)?.into()),
+        Rule::var_def => Ok(parse_var_def(tokens)?.into()),
+        Rule::label_def => Ok(Stmt::LabelDef(parse_label_def(tokens)?)),
+        Rule::goto_label => Ok(Stmt::Goto(parse_goto_label(tokens)?)),
+        Rule::if_not_zero => Ok(parse_if_not_zero(tokens)?),
+        _ => unreachable!("Unexpected rule: {:?}", tokens.as_rule()),
     }
 }
 
@@ -123,10 +128,35 @@ fn parse_goto_label(tokens: Pair<Rule>) -> Res<String> {
     Ok(ident.as_str().to_string())
 }
 
+fn parse_if_not_zero(tokens: Pair<Rule>) -> Res<Stmt> {
+    debug_assert_eq!(tokens.as_rule(), Rule::if_not_zero);
+    let mut tokens = tokens.into_inner();
+    let ident = tokens.next().unwrap();
+    debug_assert_eq!(
+        ident.as_rule(),
+        Rule::ident,
+        "Expected ident for if(x != 0). Got: {ident:?}"
+    );
+    let ident = ident.as_str().to_string();
+    let mut body: Vec<Stmt> = vec![];
+    while let Some(stmt) = tokens.next() {
+        debug_assert_eq!(stmt.as_rule(), Rule::stmt);
+        let stmt = stmt.into_inner().next().unwrap();
+        body.push(parse_stmt(stmt)?.into());
+    }
+
+    /* println!(
+        "if ({ident} != 0) {body}",
+        body = body.iter().map(ToString::to_string).join("; ")
+    ); */
+
+    return Ok(Stmt::IfNotZero { ident, body });
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::tokens::expr::StackExpr;
     use super::*;
+    use crate::tokens::expr::StackExpr;
 
     #[test]
     fn test_func_def() {
