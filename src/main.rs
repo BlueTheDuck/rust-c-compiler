@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let program = tokens::parse(&input)?;
-    let ctx = codegen::analyze(program, args.verbose_asm);
+    let ctx = codegen::analyze_global(program);
     let code = codegen::compile(ctx);
 
     output.write_all(code.as_bytes())?;
