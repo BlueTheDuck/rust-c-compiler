@@ -37,13 +37,12 @@ impl From<Address> for Operand {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Op {
     Mov { dst: Register, src: Register },
-    Set { dst: Register, src: u8 },
+    Set { dst: Register, value: u8 },
     Str { dst: Address, src: Register },
-    Load { dst: Register, src: Address },
+    Load { dst: Register, addr: Address },
     Add { dst: Register, src: Register },
     Sub { dst: Register, src: Register },
 }
@@ -58,14 +57,9 @@ impl Op {
         - register to address (`STR`)
         - address to register (`LOAD`)
     */
-    pub fn emit_set(src: Operand, dst: Operand) -> Res<Option<Self>> {
+    pub fn move_value(dst: Operand, src: Operand) -> Res<Option<Self>> {
         let op = match dst {
-            Operand::Register(dst) => match src {
-                Operand::Register(src) if dst == src => return Ok(None),
-                Operand::Register(src) => Self::Mov { dst, src },
-                Operand::Literal(src) => Self::Set { dst, src },
-                Operand::Address(src) => Self::Load { dst, src },
-            },
+            Operand::Register(dst) => return Self::set_register(dst, src),
             Operand::Literal(_) => return Err(Box::from("Cannot use a literal as destination")),
             Operand::Address(dst) => match src {
                 Operand::Register(src) => Self::Str { dst, src },
@@ -85,6 +79,16 @@ impl Op {
         return Ok(Some(op));
     }
 
+    pub fn set_register(dst: Register, src: Operand) -> Res<Option<Op>> {
+        let op = match src {
+            Operand::Register(src) if dst == src => return Ok(None),
+            Operand::Register(src) => Self::Mov { dst, src },
+            Operand::Literal(value) => Self::Set { dst, value },
+            Operand::Address(addr) => Self::Load { dst, addr },
+        };
+        return Ok(Some(op));
+    }
+
     pub fn emit_nop() -> Self {
         Self::Mov {
             dst: Register(7),
@@ -97,9 +101,9 @@ impl fmt::Display for Op {
         match self {
             Self::Mov { dst, src } if dst == src => write!(f, "MOV {dst}, {src} ; NOP"),
             Self::Mov { dst, src } => write!(f, "MOV {dst}, {src}"),
-            Self::Set { dst, src } => write!(f, "SET {dst}, {src}"),
+            Self::Set { dst, value: src } => write!(f, "SET {dst}, {src}"),
             Self::Str { dst, src } => write!(f, "STR [{dst}], {src}"),
-            Self::Load { dst, src } => write!(f, "LOAD {dst}, [{src}]"),
+            Self::Load { dst, addr: src } => write!(f, "LOAD {dst}, [{src}]"),
             Self::Add { dst, src } => write!(f, "ADD {dst}, {src}"),
             Self::Sub { dst, src } => write!(f, "SUB {dst}, {src}"),
         }
@@ -114,7 +118,7 @@ mod tests {
     fn test_op_nop() {
         let (dst, src) = match Op::emit_nop() {
             Op::Mov { dst, src } => (dst, src),
-            _ => panic!("Expected MOV between registers")
+            _ => panic!("Expected MOV between registers"),
         };
         assert_eq!(dst, src);
     }
@@ -123,12 +127,26 @@ mod tests {
     fn test_op_emit_set() {
         let tests: Vec<(Operand, Operand, Option<Op>)> = vec![
             (Register(0).into(), Register(0).into(), None),
-            (Register(0).into(), Register(1).into(), Some(Op::Mov { dst: Register(0), src: Register(1) })),
-            (Address(10).into(), Register(0).into(), Some(Op::Str { dst: Address(10), src: Register(0) })),
+            (
+                Register(0).into(),
+                Register(1).into(),
+                Some(Op::Mov {
+                    dst: Register(0),
+                    src: Register(1),
+                }),
+            ),
+            (
+                Address(10).into(),
+                Register(0).into(),
+                Some(Op::Str {
+                    dst: Address(10),
+                    src: Register(0),
+                }),
+            ),
         ];
 
         for (dst, src, expected) in tests {
-            let actual = Op::emit_set(src, dst).unwrap();
+            let actual = Op::move_value(dst, src).unwrap();
             assert_eq!(actual, expected);
         }
     }
@@ -138,14 +156,14 @@ mod tests {
     fn test_op_emit_set_invalid() {
         let dst = Address(0);
         let src = Address(0);
-        let op = Op::emit_set(src.into(), dst.into()).unwrap();
+        let op = Op::move_value(dst.into(), src.into()).unwrap();
     }
 
     #[test]
     fn test_op_emit_set_same_reg_optimization() {
-        let op1 = Register(0).into();
-        let op2 = Register(0).into();
-        let op = Op::emit_set(op1, op2);
+        let dst = Register(0).into();
+        let src = Register(0).into();
+        let op = Op::move_value(src, dst);
         assert!(op.is_ok());
         let op = op.unwrap();
         assert!(op.is_none());
