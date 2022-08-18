@@ -2,7 +2,6 @@ use crate::{
     ast::{Expr, FuncDef, Program, Stmt, VarDecl, VarDef},
     Res,
 };
-use itertools::Itertools;
 use pest::{
     iterators::{Pair, Pairs},
     Parser,

@@ -10,17 +10,6 @@ pub enum Operand {
     Literal(u8),
     Address(Address),
 }
-impl Operand {
-    pub fn register(idx: u8) -> Self {
-        Self::Register(Register(idx))
-    }
-    pub fn literal(val: u8) -> Self {
-        Self::Literal(val)
-    }
-    pub fn address(addr: u8) -> Self {
-        Self::Address(Address(addr))
-    }
-}
 impl From<Register> for Operand {
     fn from(val: Register) -> Self {
         Operand::Register(val)
@@ -34,6 +23,15 @@ impl From<u8> for Operand {
 impl From<Address> for Operand {
     fn from(val: Address) -> Self {
         Operand::Address(val)
+    }
+}
+impl fmt::Display for Operand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Register(reg) => write!(f, "{}", reg),
+            Self::Literal(val) => write!(f, "{}", val),
+            Self::Address(addr) => write!(f, "{}", addr),
+        }
     }
 }
 
@@ -156,7 +154,7 @@ mod tests {
     fn test_op_emit_set_invalid() {
         let dst = Address(0);
         let src = Address(0);
-        let op = Op::move_value(dst.into(), src.into()).unwrap();
+        let _ = Op::move_value(dst.into(), src.into()).unwrap();
     }
 
     #[test]
