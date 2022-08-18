@@ -3,8 +3,6 @@ use std::collections::HashMap;
 
 const GLOBAL_VARIABLE_START: Address = Address(0x70);
 
-type Scope = Vec<String>;
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Default)]
 #[repr(transparent)]
 pub struct Register(pub u8);
@@ -89,16 +87,16 @@ impl RegisterMap {
             .map(|(i, _)| Register(i as u8))
     }
 
-    pub fn reserve(&mut self, name: &str, reg: Option<Register>) {
+    pub fn reserve(&mut self, name: &str, reg: Option<Register>) -> Register {
         assert!(
             self.get(name).is_none(),
-            "Attempted to allocate a register for {name}, when it already has one"
+            "Attempted to allocate a register for '{name}', when it already has one"
         );
         let idx: usize = match reg {
             Some(reg) => {
                 assert!(
                     self.0.get(usize::from(reg)).is_some(),
-                    "Could not allocate register {reg} for {name} as it was already used"
+                    "Could not allocate register {reg} for '{name}' as it was already used"
                 );
                 reg.into()
             }
@@ -108,16 +106,19 @@ impl RegisterMap {
                 .enumerate()
                 .find(|(_, name)| name.is_none())
                 .map(|(idx, _)| Register::from(idx))
-                .expect("Tried to reserve too many registers")
+                .expect(&format!(
+                    "Can't allocate register for '{name}'. Too many registers are already in use"
+                ))
                 .into(),
         };
         self.0[idx] = Some(name.to_string());
+        return idx.into();
     }
 
     pub fn forget(&mut self, name: &str) {
         debug_assert!(
             self.get(name).is_some(),
-            "Attempted to forget variable {name} which does not exist"
+            "Attempted to forget variable '{name}' which does not exist"
         );
         let idx: usize = self.get(name).unwrap().into();
         self.0[idx] = None;
@@ -125,103 +126,105 @@ impl RegisterMap {
 }
 
 #[derive(Default)]
-pub struct CompilationCtx {
-    scope_stack: Scope,
+pub struct GlobalCtx {
     var_map: HashMap<String, Address>,
-    reg_maps: HashMap<String, RegisterMap>,
-    code_blocks: HashMap<String, String>,
-    local_label_counter: HashMap<String, usize>
+    functions: HashMap<String, String>,
 }
-impl CompilationCtx {
-    pub fn new() -> Self {
-        Self::default()
-    }
-    pub fn push_scope(&mut self, name: &str) {
-        self.scope_stack.push(name.to_string());
-        let scope = self.get_scope_path();
-        if self.reg_maps.get(&scope).is_none() {
-            self.reg_maps
-                .insert(scope.clone(), RegisterMap::new());
-        }
-        if self.local_label_counter.get(&scope).is_none() {
-            self.local_label_counter
-                .insert(scope.clone(), 0);
-        }
-    }
-    pub fn pop_scope(&mut self) -> Option<String> {
-        self.scope_stack.pop()
-    }
-    pub fn is_global(&self) -> bool {
-        self.scope_stack.len() == 0
-    }
-    pub fn get_scope_path(&self) -> String {
-        self.scope_stack.join("::")
-    }
-    pub fn gen_local_label(&mut self, name: &str) -> String {
-        let path = self.scope_stack.join(".");
-        let counter = *self.local_label_counter.get(&self.get_scope_path()).unwrap();
-        self.local_label_counter.insert(self.get_scope_path(), counter + 1);
-        format!(".{path}.{name}.L{counter}")
+impl GlobalCtx {
+    pub fn in_function<F>(&mut self, name: &str, f: F)
+    where
+        F: FnOnce(&mut FunctionCtx),
+    {
+        assert!(self.functions.get(name).is_none(), "Function {name} already exists");
+        let mut scope = FunctionCtx::new(name.to_string(), self);
+        f(&mut scope);
+        let FunctionCtx { code, .. } = scope;
+        self.functions.insert(name.to_string(), code);
     }
 
     pub fn reserve_global_var(&mut self, name: &str) -> Address {
         assert!(
             self.var_map.get(name).is_none(),
-            "Variable '{}' already exists",
-            name
+            "Attempted to reserve global variable '{name}' when it already exists"
         );
-        let empty_addr = self
+        let addr = self
             .var_map
             .iter()
-            .map(|(_, addr)| *addr)
             .max()
-            .map(|addr| addr + 1)
+            .map(|(_, &addr)| addr + 1)
             .unwrap_or(GLOBAL_VARIABLE_START);
-        self.var_map.insert(name.to_string(), empty_addr);
-        return empty_addr;
+        self.var_map.insert(name.to_string(), addr);
+        addr
     }
-    pub fn get_var_addr(&self, name: &str) -> Option<Address> {
-        self.var_map.get(name).map(|&addr| addr)
+    pub fn get_global_var(&self, name: &str) -> Option<Address> {
+        self.var_map.get(name).cloned()
     }
 
-    pub fn reserve_register(&mut self, name: &str, idx: Option<Register>) -> Register {
-        assert!(!self.is_global());
-        let regs = self.reg_maps.get_mut(&self.get_scope_path()).unwrap();
-        regs.reserve(name, idx);
-        return regs.get(name).unwrap();
+    pub fn functions(&self) -> &HashMap<String, String> {
+        &self.functions
     }
-    pub fn get_register(&self, name: &str) -> Option<Register> {
-        assert!(!self.is_global());
-        self.reg_maps.get(&self.get_scope_path()).unwrap().get(name)
+}
+
+pub struct FunctionCtx<'g> {
+    name: String,
+    global: &'g GlobalCtx,
+    registers: RegisterMap,
+    local_counter: usize,
+    code: String,
+}
+
+impl<'g> FunctionCtx<'g> {
+    fn new(name: String, global: &'g GlobalCtx) -> Self {
+        Self {
+            name,
+            global,
+            registers: RegisterMap::new(),
+            local_counter: 0,
+            code: String::new(),
+        }
+    }
+
+    pub fn address(&self, name: &str) -> Option<Address> {
+        self.global.get_global_var(name)
+    }
+
+    pub fn reserve_local(&mut self, name: &str) -> Register {
+        self.registers.reserve(name, None)
+    }
+    pub fn reserve_register(&mut self, name: &str, register: Register) {
+        self.registers.reserve(name, Some(register));
+    }
+    pub fn register(&self, name: &str) -> Option<Register> {
+        self.registers.get(name)
     }
     pub fn forget_register(&mut self, name: &str) {
-        assert!(!self.is_global());
-        self.reg_maps
-            .get_mut(&self.get_scope_path())
-            .unwrap()
-            .forget(name);
+        self.registers.forget(name);
+    }
+    pub fn with_tmp<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut Self, Register),
+    {
+        let reg_name = format!("tmp{}", self.local_counter);
+        let tmp = self.reserve_local(&reg_name);
+        self.local_counter += 1;
+        f(self, tmp);
+        self.forget_register(&reg_name);
     }
 
-    pub fn var_is_global(&self, name: &str) -> bool {
-        self.var_map.get(name).is_some()
-    }
-    pub fn var_is_local(&self, name: &str) -> bool {
-        self.get_register(name).is_some()
-    }
-
-    pub fn push_asm_line(&mut self, line: &str) {
-        let code_block = self.code_blocks.entry(self.get_scope_path()).or_default();
-        code_block.push('\n');
-        code_block.push_str(line);
+    pub fn push_asm_line<S>(&mut self, line: S)
+    where S: AsRef<str> {
+        self.code.push_str(line.as_ref());
+        self.code.push('\n');
     }
 
-    pub fn get_asm(&self, path: Option<String>) {
-        let path = path.unwrap_or_else(|| self.get_scope_path());
-        println!("{}", self.code_blocks.get(&path).unwrap());
-    }
-
-    pub fn code_blocks(&self) -> &HashMap<String, String> {
-        &self.code_blocks
+    pub fn gen_local_label(&mut self, label: &str) -> String {
+        let label = format!(
+            "{name}.{label}.L{idx}",
+            name = self.name,
+            idx = self.local_counter
+        );
+        self.local_counter += 1;
+        label
     }
 }
 
@@ -230,83 +233,87 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_ctx_reserve_global() {
-        let mut ctx = CompilationCtx::new();
+    fn test_global_reserve_global() {
+        let mut ctx: GlobalCtx = Default::default();
         ctx.reserve_global_var("a");
         ctx.reserve_global_var("b");
         ctx.reserve_global_var("c");
-        assert_eq!(ctx.var_map.get("a"), Some(&GLOBAL_VARIABLE_START));
-        assert_eq!(ctx.var_map.get("b"), Some(&(GLOBAL_VARIABLE_START + 1)));
-        assert_eq!(ctx.var_map.get("c"), Some(&(GLOBAL_VARIABLE_START + 2)));
+        assert!(ctx.get_global_var("a").is_some());
+        assert!(ctx.get_global_var("b").is_some());
+        assert!(ctx.get_global_var("c").is_some());
+        let a = ctx.get_global_var("a").unwrap();
+        let b = ctx.get_global_var("b").unwrap();
+        let c = ctx.get_global_var("c").unwrap();
+        assert_ne!(a, b);
+        assert_ne!(a, c);
+        assert_ne!(b, c);
     }
 
     #[test]
     #[should_panic]
-    fn test_ctx_reserve_global_again() {
-        let mut ctx = CompilationCtx::new();
+    fn test_global_reserve_global_again() {
+        let mut ctx: GlobalCtx = Default::default();
         ctx.reserve_global_var("a");
         ctx.reserve_global_var("a");
     }
 
     #[test]
-    fn test_ctx_reserve_local() {
-        let mut ctx = CompilationCtx::new();
-        ctx.push_scope("main");
-        ctx.reserve_register("a", None);
-        ctx.reserve_register("b", None);
-        ctx.reserve_register("c", None);
-        assert_eq!(ctx.get_register("a"), Some(Register::from(0u8)));
-        assert_eq!(ctx.get_register("b"), Some(Register::from(1u8)));
-        assert_eq!(ctx.get_register("c"), Some(Register::from(2u8)));
-        ctx.pop_scope();
-        ctx.push_scope("foo");
-        assert_eq!(ctx.get_register("a"), None);
-        assert_eq!(ctx.get_register("b"), None);
-        assert_eq!(ctx.get_register("c"), None);
-    }
-
-    #[test]
     #[should_panic]
-    fn test_ctx_reserve_local_on_global() {
-        let mut ctx = CompilationCtx::new();
-        ctx.reserve_register("a", None);
+    fn test_global_ctx_same_function() {
+        let mut ctx: GlobalCtx = Default::default();
+        ctx.in_function("main", |_| {});
+        ctx.in_function("main", |_| {});
     }
 
     #[test]
-    #[should_panic]
-    fn test_ctx_reserve_twice() {
-        let mut ctx = CompilationCtx::new();
-        ctx.reserve_register("a", None);
-        ctx.reserve_register("a", None);
+    fn test_local_ctx_reserve_local() {
+        let mut ctx: GlobalCtx = Default::default();
+        ctx.in_function("main", |ctx| {
+            let a = ctx.reserve_local("a");
+            let b = ctx.reserve_local("b");
+            let c = ctx.reserve_local("c");
+            assert!(a.0 < 8);
+            assert!(b.0 < 8);
+            assert!(c.0 < 8);
+        });
+        ctx.in_function("irq", |ctx| {
+            let a = ctx.reserve_local("a");
+            let b = ctx.reserve_local("b");
+            let c = ctx.reserve_local("c");
+            assert!(a.0 < 8);
+            assert!(b.0 < 8);
+            assert!(c.0 < 8);
+        });
     }
 
     #[test]
-    #[should_panic]
-    fn test_ctx_reserve_too_many_locals() {
-        let mut ctx = CompilationCtx::new();
-        ctx.push_scope("main");
-        for i in 0..=7 {
-            ctx.reserve_register(&format!("reg-{i}"), None);
-        }
-        for i in 0..=7 {
-            let reg = ctx.get_register(&format!("reg-{i}"));
-            assert_eq!(reg, Some(Register(i)));
-        }
-        ctx.reserve_register("one-too-many", None);
+    #[should_panic = "Attempted to allocate a register for 'a', when it already has one"]
+    fn test_local_ctx_reserve_local_again() {
+        let mut ctx: GlobalCtx = Default::default();
+        ctx.in_function("main", |ctx| {
+            let _ = ctx.reserve_local("a");
+            let _ = ctx.reserve_local("a");
+        });
     }
 
     #[test]
-    fn test_ctx_local_labels() {
-        let mut ctx = CompilationCtx::new();
-        ctx.push_scope("main");
-        let label = ctx.gen_local_label("a");
-        assert_eq!(label, ".main.a.L0");
-        let label = ctx.gen_local_label("a");
-        assert_eq!(label, ".main.a.L1");
-        ctx.push_scope("sub");
-        let label = ctx.gen_local_label("a");
-        assert_eq!(label, ".main.sub.a.L0");
-        let label = ctx.gen_local_label("a");
-        assert_eq!(label, ".main.sub.a.L1");
+    #[should_panic = "Can't allocate register for 'one_to_many'. Too many registers are already in use"]
+    fn test_local_ctx_reserve_too_many() {
+        let mut ctx: GlobalCtx = Default::default();
+        ctx.in_function("main", |ctx| {
+            for i in 0..8 {
+                ctx.reserve_local(&format!("a{i}"));
+            }
+            ctx.reserve_local("one_to_many");
+        });
+    }
+
+    #[test]
+    fn test_local_ctx_counter() {
+        let mut ctx: GlobalCtx = Default::default();
+        ctx.in_function("main", |ctx| {
+            let label = ctx.gen_local_label("label");
+            assert!(ctx.local_counter == 1);
+        });
     }
 }
